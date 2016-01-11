@@ -1030,7 +1030,7 @@ class StaggeredGrid(Grid):
             if self.read:
                 kernel = self.resolve_media_params(kernel)
             body.append(cgen.Assign(ccode(field[idx]), ccode(kernel.xreplace({self.t+1: self.time[1], self.t: self.time[0]}))))
-        body = [cgen.For(cgen.InlineInitializer(cgen.Value('int', i), i0), cgen.Line('%s<%s'%(i, i1)), cgen.Line('++%s'%i), cgen.Block(body))]
+        body = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(indexes[1], indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body))]
         if not self.pluto and self.ivdep and indexes[0] == self.dimension-1:
             body.insert(0, cgen.Statement(self.compiler._ivdep))
         if not self.pluto and self.simd and indexes[0] == self.dimension-1:
@@ -1038,12 +1038,11 @@ class StaggeredGrid(Grid):
 
         return body
 
-    def fission_kernel(self, grid_field, indexes, template):
+    def fission_kernel(self, grid_field, indexes):
         """
         Generate the inner loop with all fields from stress or velocity
         :param grid_field: stress or velocity field array
         :param indexes: array with dimension, dimension var, initial margin, final margin
-        :param template: mako string template
         - iterate through fields and for each dimension separate minus, plus and unitary strides
         on its own loop replacing it on mako template
         - return inner loop code as string
@@ -1076,7 +1075,7 @@ class StaggeredGrid(Grid):
                 if not (len(kernel_stmt_neg.args) == 0):
                     body_tmp = [cgen.Statement(ccode(field[idx]) + operator[operator_idx] \
                         + ccode(kernel_stmt_neg.xreplace({self.t+1: self.time[1], self.t: self.time[0]})))]
-                    body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(i, indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body_tmp))]
+                    body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(indexes[1], indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body_tmp))]
                     if not self.pluto and self.ivdep and indexes[0] == self.dimension-1:
                         body_tmp.insert(0, cgen.Statement(self.compiler._ivdep))
                     if not self.pluto and self.simd and indexes[0] == self.dimension-1:
@@ -1087,7 +1086,7 @@ class StaggeredGrid(Grid):
                 if not (len(kernel_stmt_pos.args) == 0):
                     body_tmp = [cgen.Statement(ccode(field[idx]) + operator[operator_idx] \
                         + ccode(kernel_stmt_pos.xreplace({self.t+1: self.time[1], self.t: self.time[0]})))]
-                    body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(i, indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body_tmp))]
+                    body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(indexes[1], indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body_tmp))]
                     if not self.pluto and self.ivdep and indexes[0] == self.dimension-1:
                         body_tmp.insert(0, cgen.Statement(self.compiler._ivdep))
                     if not self.pluto and self.simd and indexes[0] == self.dimension-1:
@@ -1100,7 +1099,7 @@ class StaggeredGrid(Grid):
                 kernel_stmt = kernel_stmt.subs({arg: 0}, simultaneous=True)
             body_tmp = [cgen.Statement(ccode(field[idx]) + '+=' \
                 + ccode(kernel_stmt.xreplace({self.t+1: self.time[1], self.t: self.time[0]})))]
-            body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(i, indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body_tmp))]
+            body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s'%(indexes[1], indexes[3])), cgen.Line('++%s'%indexes[1]), cgen.Block(body_tmp))]
             if not self.pluto and self.ivdep and indexes[0] == self.dimension-1:
                 body_tmp.insert(0, cgen.Statement(self.compiler._ivdep))
             if not self.pluto and self.simd and indexes[0] == self.dimension-1:
