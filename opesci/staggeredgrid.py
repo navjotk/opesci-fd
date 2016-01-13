@@ -892,7 +892,7 @@ class StaggeredGrid(Grid):
                 # alloc aligned memory (on windows and linux)
                 statements.append(vec_value)
                 ifdef = cgen.IfDef('_MSC_VER', [
-                                        cgen.Assign('vec', '(%s*) _aligned_malloc(%d * sizeof(%s), %d)'%(self.real_t, vsize, self.real_t, self.alignment))
+                                        cgen.Assign(vec, '(%s*) _aligned_malloc(%d * sizeof(%s), %d)'%(self.real_t, vsize, self.real_t, self.alignment))
                                         ], [
                                             cgen.Statement('posix_memalign((void **)(&%s), %d, %d*sizeof(%s))' % (vec, self.alignment, vsize, self.real_t))
                                             ])
