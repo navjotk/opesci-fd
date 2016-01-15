@@ -2,6 +2,7 @@ from os import path, environ
 import subprocess
 import cgen_wrapper as cgen
 
+
 def get_package_dir():
     return path.abspath(path.dirname(__file__))
 
