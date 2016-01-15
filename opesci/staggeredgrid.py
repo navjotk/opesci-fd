@@ -1070,7 +1070,7 @@ class StaggeredGrid(Grid):
                     body_tmp = [cgen.Statement(ccode(field[idx]) + operator[operator_idx] + ccode(kernel_stmt_pos.xreplace({self.t+1: self.time[1], self.t: self.time[0]})))]
                     body_tmp = [cgen.For(cgen.InlineInitializer(cgen.Value('int', indexes[1]), indexes[2]), cgen.Line('%s<%s' % (indexes[1], indexes[3])), cgen.Line('++%s' % indexes[1]), cgen.Block(body_tmp))]
                     if not self.pluto and self.ivdep and indexes[0] == self.dimension-1:
-                        body_tmp.insert(0, cself.compiler._ivdep)
+                        body_tmp.insert(0, self.compiler._ivdep)
                     if not self.pluto and self.simd and indexes[0] == self.dimension-1:
                         body_tmp.insert(0, cgen.Pragma('simd'))
                     body = body + body_tmp
@@ -1135,7 +1135,6 @@ class StaggeredGrid(Grid):
         - recursive insertion to generate nested loop
         return generated code as string
         """
-        print "velocity loop!!!"
         return self.generate_loop(self.vfields)
 
     @property
