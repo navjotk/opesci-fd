@@ -1,4 +1,4 @@
-from sympy import Indexed, IndexedBase, solve, Eq
+from sympy import Indexed, IndexedBase, solve, Eq, Function
 from util import *
 from derivative import *
 
@@ -409,6 +409,7 @@ class Media(IndexedBase):
 class RegularField(Field):
     def __init__(self, *args, **kwargs):
         super(RegularField, self).__init__(staggered=[0, 0, 0], *args, **kwargs)
+        self.function = Function("p")
 
     def calc_derivative(self, l, k, d, n, order_of_derivative):
         """

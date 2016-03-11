@@ -82,7 +82,7 @@ class Grid(object):
             self.src_lib = out
         return out
 
-    def execute(self, filename, compiler='g++', nthreads=1, affinity='close'):
+    def execute(self, filename, data, compiler='g++', nthreads=1, affinity='close'):
         # Parallel thread settings
         environ["OMP_NUM_THREADS"] = str(nthreads)
         if affinity in ['close', 'spread']:
@@ -117,8 +117,11 @@ class Grid(object):
         # Load opesci_run and define it's arguments
         opesci_execute = self._library.opesci_execute
         opesci_execute.argtypes = [POINTER(OpesciGrid), POINTER(OpesciProfiling)]
-
+        
+        opesci_initialise = self._library.copy_initialise
+        
         print "Executing with %d threads (affinity=%s)" % (nthreads, affinity)
+        opesci_initialise(pointer(data))
         opesci_execute(pointer(self._arg_grid), pointer(self._arg_profiling))
         if self.profiling:
             if len(self._papi_events) > 0:

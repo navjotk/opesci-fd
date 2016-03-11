@@ -1,4 +1,5 @@
 from cgen import *
+import numpy as np
 
 
 def replace_in_code(code, str_from, str_to):
@@ -22,3 +23,8 @@ def replace_in_code(code, str_from, str_to):
         if isinstance(code_element, Loop):
             replace_in_code(code_element.body, str_from, str_to)
     return code
+
+def generate_matrix_initialization(array):
+    assert(array is np.ndarray)
+    dimensions = array.shape
+    

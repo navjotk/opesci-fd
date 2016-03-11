@@ -290,3 +290,6 @@ def shift_index(expr, k, s):
     args = tuple([shift_index(arg, k, s) for arg in expr.args])
     expr2 = expr.func(*args)
     return expr2
+
+
+

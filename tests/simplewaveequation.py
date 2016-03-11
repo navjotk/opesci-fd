@@ -1,8 +1,10 @@
 from opesci import *
 from os import path
 from argparse import ArgumentParser, RawTextHelpFormatter
-
-
+from sympy.abc import *
+import numpy as np
+from sympy.functions.special.delta_functions import Heaviside
+from sympy import floor
 _test_dir = path.join(path.dirname(__file__), "src")
 
 
@@ -46,9 +48,9 @@ def simplewave3d(domain_size, grid_size, dt, tmax, output_vts=False, o_converge=
     print 'tmax: ' + str(tmax)
 
     # Declare fields
-    MAIN_GRID = RegularField('MAIN_GRID', dimension=3)
+    
 
-    grid = RegularGrid(dimension=3, domain_size=domain_size, grid_size=grid_size, fields=[MAIN_GRID], pluto=pluto, fission=fission)
+    grid = RegularGrid(dimension=3, domain_size=domain_size, grid_size=grid_size, pluto=pluto, fission=fission)
     grid.set_time_step(dt, tmax)
     grid.set_switches(omp=omp, simd=simd, ivdep=ivdep, double=double,
                       expand=expand, eval_const=eval_const,
@@ -61,21 +63,45 @@ def simplewave3d(domain_size, grid_size, dt, tmax, output_vts=False, o_converge=
     grid.set_params(c=2, v=1)
 
     print 'require dt < ' + str(grid.get_time_step_limit())
-    mu = 10
-    beta = 0.5
-    Omega = pi*sqrt(2*mu*beta)
-    A = sqrt(2*mu/beta)
-    MAIN_GRID_init_func = -A*sin(pi*x)*(sin(pi*y)-sin(pi*z))*sin(Omega*t)
-    MAIN_GRID.set_analytic_solution(MAIN_GRID_init_func)
+    dtt = grid.get_time_derivative(2, 2)
+    dt = grid.get_time_derivative(1, 2)
+    dxx, dyy, dzz = grid.get_space_derivatives(2, 2)
+    global M, Q, D, E
+    m,s,h = symbols('m s h')
+    m=M(x,y)
+    q=Q(x,y,t)
+    d=D(x,y,t)
+    e=E(x,y)
+    wave_equation = m*dtt- (dxx+dyy) - q  + e*dt
+    
+    
+    hstep=25 #space increment d  = minv/(10*f0);
+    tstep=2 #time increment dt < .5 * hstep /maxv;
+    tmin=0.0 #initial time
+    tmax=600 #simulate until
+    xmin=-500.0 - 10*hstep #left bound
+    xmax=500.0 + 10*hstep #right bound...assume packet never reaches boundary
+    ymin=-500.0 - 10*hstep #left bound
+    ymax=500.0 + 10*hstep #right bound...assume packet never reaches boundary
+    f0=.010
+    t0=1/.010
+    nbpml=10
+    nx = int((xmax-xmin)/hstep) + 1 #number of points on x grid
+    ny = int((ymax-ymin)/hstep) + 1 #number of points on x grid
+    nt = int((tmax-tmin)/tstep) + 2 #number of points on t grid
+    xsrc=-400
+    ysrc=0.0
+    xrec = nbpml+4
+    
+
     grid.set_order(accuracy_order)
 
     # The equation involves second-order derivatives, so instruct the class not to drop second derivatives from the analysis
     grid.calc_derivatives(2)
-
-    # The DE that generates the kernel
-    eq0 = Eq(MAIN_GRID.d[0][2], (const_c**2)*(MAIN_GRID.d[1][2] + MAIN_GRID.d[2][2] + MAIN_GRID.d[2][2]))
-
-    grid.solve_fd([eq0])
+    
+    #velocity_function = 3 + Heaviside(x-floor(nx/2))*1.5
+    #grid.set_velocity_initialisation_function(mt)
+    grid.solve_fd([wave_equation], m, q, e)
     print 'Kernel AI'
     print '%.2f, %.2f (weighted), %d ADD, %d MUL, %d LOAD, %d STORE' % grid.get_kernel_ai()
     return grid
@@ -125,10 +151,26 @@ def default(compiler=None, execute=False, nthreads=1,
             grid.generate(filename_p)
         else:
             out = grid.compile(filename_p, compiler=compiler, shared=False)
-
+    hstep=25 #space increment d  = minv/(10*f0);
+    tstep=2 #time increment dt < .5 * hstep /maxv;
+    tmin=0.0 #initial time
+    tmax=600 #simulate until
+    xmin=-500.0 - 10*hstep #left bound
+    xmax=500.0 + 10*hstep #right bound...assume packet never reaches boundary
+    ymin=-500.0 - 10*hstep #left bound
+    ymax=500.0 + 10*hstep #right bound...assume packet never reaches boundary
+    f0=.010
+    t0=1/.010
+    nbpml=10
+    nx = int((xmax-xmin)/hstep) + 1 #number of points on x grid
+    ny = int((ymax-ymin)/hstep) + 1 #number of points on x grid
+    nt = int((tmax-tmin)/tstep) + 2 #number of points on t grid
+    vel=np.ones((nx,ny)) + 2.0
+    vel[floor(nx/2):nx,:]=4.5
+    mt=vel**-2
     if execute:
         # Test Python-based execution for the base test
-        grid.execute(filename_p, compiler=compiler, nthreads=nthreads)
+        grid.execute(filename_p, mt, compiler=compiler, nthreads=nthreads)
         grid.convergence()
     return out
 

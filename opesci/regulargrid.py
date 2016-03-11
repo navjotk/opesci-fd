@@ -3,12 +3,14 @@ from variable import Variable
 from codeprinter import ccode
 from derivative import DDerivative
 from util import *
-from sympy import solve, expand, symbols
+from sympy import solve, expand, symbols, as_finite_diff, Function
+from sympy.abc import *
 import mmap
 import cgen_wrapper as cgen
 from __builtin__ import str
 from opesci.fields import RegularField
 from templates import regular3d_tmpl
+from sympy.matrices import DeferredVector
 
 __all__ = ['RegularGrid']
 
@@ -19,7 +21,7 @@ class RegularGrid(Grid):
                  'output_vts', 'converge', 'profiling', 'pluto', 'fission']
     _params = ['c', 'v']
 
-    def __init__(self, dimension, index=None, fields=None, double=False, profiling=False, pluto=False, fission=False, omp=True, ivdep=True, simd=False, io=False,
+    def __init__(self, dimension, index=None, double=False, profiling=False, pluto=False, fission=False, omp=True, ivdep=True, simd=False, io=False,
                  expand=True, eval_const=True, grid_size=(10, 10, 10), domain_size=None, output_vts=False):
         super(RegularGrid, self).__init__()
 
@@ -43,8 +45,11 @@ class RegularGrid(Grid):
         self.t = Symbol('_t')
         self.grid_size = grid_size
         self.max_derivative_order = 1
-        if fields is not None:
-            self.fields = fields
+        if type(self) is RegularGrid:
+            MAIN_GRID = RegularField('MAIN_GRID', dimension=self.dimension)
+            self.fields = [MAIN_GRID]
+        #if fields is not None:
+        #    self.fields = fields
         self.set_order(default_order)
         self.set_grid_size(grid_size)
 
@@ -78,10 +83,14 @@ class RegularGrid(Grid):
             self.set_domain_size(domain_size)
         self.read = False
         self.initialize_template()
+        self.s, self.h = symbols("s h")
 
     def initialize_template(self):
         self.cgen_template = regular3d_tmpl.Regular3DTemplate(self)
-
+    
+    def set_velocity_initialisation_function(self, function):
+        self.initial_velocity = function
+    
     def set_variable(self, var, value=0, type='int', constant=False):
         """
         set user defined variables, update defined_variable list
@@ -93,7 +102,38 @@ class RegularGrid(Grid):
         if isinstance(var, Symbol):
             var = var.name
         self.defined_variable[var] = Variable(var, value, type, constant)
-
+    
+    def get_time_derivative(self, derivative_order, accuracy_order):
+        global x, y, z
+        t=self.t
+        #TODO: Generalize
+        if accuracy_order != 2:
+            raise ValueError('Only implemented for accuracy order 2')
+        
+        if derivative_order > 2:
+            raise ValueError('Derivates only available until second order')
+        s = self.s
+        print self.fields
+        if derivative_order==1:
+            return as_finite_diff(self.fields[0].function(x,y,z,t).diff(t), [t-s, t+s])
+        else:
+            return as_finite_diff(self.fields[0].function(x,y,z,t).diff(t,t), [t-s,t, t+s])
+    
+    def get_space_derivatives(self, derivative_order, accuracy_order):
+        global t, x, y, z
+        #TODO: Generalize
+        if accuracy_order != 2:
+            raise ValueError('Only implemented for accuracy order 2')
+        
+        if derivative_order > 2:
+            raise ValueError('Derivates only available until second order')
+        h = self.h
+        print self.fields
+        if derivative_order==1:
+            return (as_finite_diff(self.fields[0].function(x,y,z,t).diff(x), [x-h, x+h]), as_finite_diff(self.fields[0].function(x,y,z,t).diff(y), [y-h, y+h]), as_finite_diff(self.fields[0].function(x,y,z,t).diff(z), [z-h, z+h]))
+        else:
+            return (as_finite_diff(self.fields[0].function(x,y,z,t).diff(x,x), [x-h,x, x+h]), as_finite_diff(self.fields[0].function(x,y,z,t).diff(y,y), [y-h,y, y+h]), as_finite_diff(self.fields[0].function(x,y,z,t).diff(z,z), [z-h,z, z+h]))    
+    
     def calc_derivatives(self, max_order=1):
         """
         populate field.d lists with Derivative objects
@@ -227,47 +267,29 @@ class RegularGrid(Grid):
         for field in self.fields:
             field.set_spacing(variable_to_symbol([self.dt]+self.spacing))
 
-    def solve_fd(self, equations):
+    def solve_fd(self, equations, m, q):
         """
-        - from the input PDEs, solve for the time stepping compuation kernel
+        - from the input PDEs, solve for the time stepping computation kernel
         of all stress and velocity fields of the grid
         :param eqs: PDEs
         Note: sympy doesn't support solving simultaneous equations
         containing Indexed objects
-        need to pass one equation to eqch field to solve
+        need to pass one equation for each field to solve
         """
-        self.eq = []
-        if not len(self.fields) == len(equations):
-            raise KeyError("Number of equations must be the same as number of fields. Number of fields is ", len(self.fields))
-
-        # save the equation
-        for field, eq in zip(self.fields, equations):
-            field.set_dt(eq.rhs)
-            self.eq.append(eq)
-        # replace derivatives in equations with FD approximations
-        eqs = []
-        for eq in self.eq:
-            derivatives = get_all_objects(eq, DDerivative)
-            for deriv in derivatives:
-                eq = eq.subs(deriv, deriv.fd[deriv.max_accuracy])
-            eqs += [eq]
-
+        
         t = self.t
-        t1 = t+hf+(self.order[0]/2-1)  # the most advanced time index
-        t1_regular = t+1+(self.order[0]/2-1)
-        index = [t1] + self.index
-        index_regular = [t1_regular] + self.index
 
         simplify = True if max(self.order[1:]) <= 4 else False
-
-        for field, eq in zip(self.fields, eqs):
-            # want the LHS of express to be at time t+1
-            if isinstance(field, RegularField):
-                kernel = solve(eq, field[index_regular], simplify=simplify)[0]
-            else:
-                kernel = solve(eq, field[index], simplify=simplify)[0]
-            kernel = kernel.subs({t: t-(self.order[0]/2-1)})
-            field.set_fd_kernel(kernel)
+        print(self.fields[0].function(x,y,z, t+self.s))
+        kernel = solve(equations[0], self.fields[0].function(x,y,z, t+self.s), simplify=simplify)[0]
+        print kernel
+        v = IndexedBase("m")
+        src_fun = Function("src")
+        kernel = kernel.subs({m: v[x,y], q: src_fun(x,y)}, eval=False)
+        print kernel
+            
+        self.fields[0].set_fd_kernel(kernel)
+        self.fields[0].sol = kernel
 
     def get_all_variables(self):
         """
@@ -462,7 +484,16 @@ class RegularGrid(Grid):
             result.append(back_assign)
 
         return cgen.Module(result)
-
+    
+    @property
+    def copy_memory(self):
+        #data, rowcount, colcount
+        
+        vec = "_%s_vec" % ccode("m")
+        statements = [cgen.Assign(vec, 'data')]
+        return statements
+        
+    
     @property
     def declare_fields(self):
         """
@@ -492,6 +523,9 @@ class RegularGrid(Grid):
             # cast pointer to multidimensional array
             cast_pointer = cgen.Initializer(cgen.Value(self.real_t, "(*%s)%s" % (ccode(field.label), arr)), '(%s (*)%s) %s' % (self.real_t, arr, vec))
             statements.append(cast_pointer)
+        vec = "_%s_vec" % ccode("m")
+        vec_value = cgen.Pointer(cgen.Value(self.real_t, vec))
+        statements.append(vec_value)
         result += statements
         return cgen.Module(result)
 
@@ -500,6 +534,7 @@ class RegularGrid(Grid):
         loop = [Symbol('_'+x.name) for x in self.index]  # symbols for loop
 
         statements = []
+        
         for field in self.fields:
             body = []
             if self.omp:
@@ -510,7 +545,7 @@ class RegularGrid(Grid):
                 i0 = 0
                 i1 = ccode(self.dim[d])
                 pre = []
-
+                #velocity_initialisation = cgen.Assign(ccode())
                 post = []
                 if d == self.dimension-1:
                     # inner loop
@@ -525,6 +560,8 @@ class RegularGrid(Grid):
 
             statements.append(body[0])
             statements += self.generate_second_initialisation()
+            
+            
         return cgen.Module(statements)
 
     def generate_second_initialisation(self):
